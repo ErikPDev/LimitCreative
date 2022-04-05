@@ -1,0 +1,12 @@
+---
+name: LimitCreative
+version: 0.0.1
+main: ErikPDev\LimitCreative\LimitCreative
+api: 4.2.6
+src-namespace-prefix: ErikPDev\LimitCreative
+
+permissions:
+  limitcreative.bypass:
+    description: "Bypass the LimitCreative plugin"
+    default: "op"
+...

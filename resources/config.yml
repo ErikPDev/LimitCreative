@@ -1,0 +1,19 @@
+# Welcome to Limit Creative for PM4!
+
+clearInventory: true # Set this to true if you want to clear the player inventory before death or switching gamemodes.
+separateInventories: true # Set this to true if you want each game mode to have a separate inventory
+
+allowDropItems: false # Set this to true if you allow the player to drop items in Creative.
+allowPickupItems: false # Set this to true if you allow the player to pick up items in Creative.
+
+blacklisted-blocks:
+  - "ender_chest"
+  - "chest"
+  - "furnace"
+  - "burning_furnace"
+  - "trapped_chest"
+  - "enchantment_table"
+  - "anvil"
+  - "item_frame_block"
+  - "shulker_box"
+  - "undyed_shulker_box"
