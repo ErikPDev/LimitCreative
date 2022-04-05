@@ -4,11 +4,11 @@ declare(strict_types=1);
 
 namespace ErikPDev\LimitCreative;
 
-use pocketmine\event\block\BlockPlaceEvent;
 use pocketmine\event\entity\EntityDamageByEntityEvent;
 use pocketmine\event\entity\EntityItemPickupEvent;
 use pocketmine\event\Listener;
 use pocketmine\event\player\PlayerBlockPickEvent;
+use pocketmine\event\player\PlayerDeathEvent;
 use pocketmine\event\player\PlayerDropItemEvent;
 use pocketmine\event\player\PlayerGameModeChangeEvent;
 use pocketmine\event\player\PlayerInteractEvent;
@@ -47,6 +47,7 @@ class LimitCreative extends PluginBase implements Listener {
 		$this->registerInteractEvent();
 		$this->registerBlockPickUpEvent();
 		$this->registerEntityDamageByEntityEvent();
+		$this->registerPlayerDeathEvent();
 
 		if ($this->getConfig()->get("allowDropItems", false) == false)
 			$this->registerDropItemEvent();
@@ -172,6 +173,22 @@ class LimitCreative extends PluginBase implements Listener {
 		};
 
 		Server::getInstance()->getPluginManager()->registerEvent(EntityDamageByEntityEvent::class, $entityDamage, 0, $this);
+
+	}
+
+	private function registerPlayerDeathEvent(){
+
+		$playerDeath = function (PlayerDeathEvent $event){
+
+			if(!$event->getPlayer()->isCreative()) return;
+			if(self::canBypass($event->getPlayer())) return;
+
+			if ($this->getConfig()->get("clearInventory", true) == true)
+				self::clearInventory($event->getPlayer());
+
+		};
+
+		Server::getInstance()->getPluginManager()->registerEvent(PlayerDeathEvent::class, $playerDeath, 0, $this);
 
 	}
 
