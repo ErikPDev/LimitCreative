@@ -6,7 +6,6 @@ namespace ErikPDev\LimitCreative;
 
 use pocketmine\event\block\BlockPlaceEvent;
 use pocketmine\event\entity\EntityDamageByEntityEvent;
-use pocketmine\event\entity\EntityDamageEvent;
 use pocketmine\event\entity\EntityItemPickupEvent;
 use pocketmine\event\Listener;
 use pocketmine\event\player\PlayerBlockPickEvent;
@@ -156,19 +155,7 @@ class LimitCreative extends PluginBase implements Listener {
 
 		};
 
-		$blockPlace = function (BlockPlaceEvent $event) {
-
-			if (!$event->getPlayer()->isCreative()) return;
-			if(self::canBypass($event->getPlayer())) return;
-
-			if (!in_array($event->getBlock()->getId(), $this->blacklist)) return;
-
-			$event->cancel();
-
-		};
-
 		Server::getInstance()->getPluginManager()->registerEvent(PlayerInteractEvent::class, $interact, 0, $this);
-		Server::getInstance()->getPluginManager()->registerEvent(BlockPlaceEvent::class, $blockPlace, 0, $this);
 
 	}
 
