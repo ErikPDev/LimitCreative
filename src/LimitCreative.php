@@ -133,7 +133,7 @@ class LimitCreative extends PluginBase implements Listener {
 			$entity = $event->getEntity();
 			if (!$entity instanceof Player) return;
 			if (!$entity->isCreative()) return;
-			if(self::canBypass($event->getPlayer())) return;
+			if(self::canBypass($entity)) return;
 
 			$event->cancel();
 
