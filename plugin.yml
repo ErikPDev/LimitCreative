@@ -1,8 +1,8 @@
 ---
 name: LimitCreative
-version: 0.0.1
+version: 1.0.0
 main: ErikPDev\LimitCreative\LimitCreative
-api: 4.2.6
+api: 4.0.0
 src-namespace-prefix: ErikPDev\LimitCreative
 
 permissions:
