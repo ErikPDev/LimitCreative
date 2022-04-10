@@ -22,6 +22,7 @@ use poggit\libasynql\libasynql;
 class LimitCreative extends PluginBase implements Listener {
 
 	private static \poggit\libasynql\DataConnector $database;
+	private static \pocketmine\plugin\PluginLogger|\AttachableLogger $logger;
 	private array $blacklist;
 
 	protected function onEnable(): void {
@@ -72,7 +73,8 @@ class LimitCreative extends PluginBase implements Listener {
 
 		self::$database->executeGeneric("limitcreative.init");
 
-
+		self::$logger = $this->getLogger();
+		
 	}
 
 
@@ -288,6 +290,8 @@ class LimitCreative extends PluginBase implements Listener {
 		if ($queryName == null)
 			return;
 
+		$logger = self::$logger;
+
 		self::$database->executeSelect($queryName, ["UUID" => $player->getUniqueId()->toString()],
 			function ($data) use ($gamemode, $player) {
 
@@ -312,8 +316,8 @@ class LimitCreative extends PluginBase implements Listener {
 				}
 
 			},
-			function ($error) { // Error is untested.
-				$this->getLogger()->critical($error);
+			function ($error, $logger) { // Error is untested.
+				$logger->critical($error);
 			}
 		);
 
