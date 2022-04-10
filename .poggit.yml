@@ -6,4 +6,7 @@ projects:
   LimitCreative:
     path: ""
     icon: "assets/icon.png"
+    libs:
+      - src: poggit/libasynql/libasynql
+        version: ^4.0.0
 ...

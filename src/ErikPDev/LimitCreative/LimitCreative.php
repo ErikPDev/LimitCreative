@@ -17,10 +17,11 @@ use pocketmine\item\StringToItemParser;
 use pocketmine\player\Player;
 use pocketmine\plugin\PluginBase;
 use pocketmine\Server;
+use poggit\libasynql\libasynql;
 
 class LimitCreative extends PluginBase implements Listener {
 
-	private static array $inventories = array();
+	private static \poggit\libasynql\DataConnector $database;
 	private array $blacklist;
 
 	protected function onEnable(): void {
@@ -55,6 +56,31 @@ class LimitCreative extends PluginBase implements Listener {
 		if ($this->getConfig()->get("allowPickupItems", false) == false)
 			$this->registerPickUpItemEvent();
 
+		self::$database = libasynql::create(
+			$this,
+			array(
+				"type" => "sqlite",
+				"sqlite" => array(
+					"file" => "data.sqlite"
+				),
+				"worker-limit" => 1
+			),
+			[
+				"sqlite" => "sqlite.sql"
+			]
+		);
+
+		self::$database->executeGeneric("limitcreative.init");
+
+
+	}
+
+
+	protected function onDisable(): void {
+
+		if (isset(self::$database))
+			self::$database->close();
+
 	}
 
 	private function registerQuitEvent() {
@@ -64,8 +90,7 @@ class LimitCreative extends PluginBase implements Listener {
 			if ($this->getConfig()->get("clearInventory", true) == true && $event->getPlayer()->isCreative() == true && !self::canBypass($event->getPlayer()))
 				self::clearInventory($event->getPlayer());
 
-			if (isset(self::$inventories[$event->getPlayer()->getName()])) return;
-			unset(self::$inventories[$event->getPlayer()->getName()]);
+			self::saveInventory($event->getPlayer(), $event->getPlayer()->getGamemode()->getAliases()[0]);
 
 		};
 
@@ -84,9 +109,9 @@ class LimitCreative extends PluginBase implements Listener {
 			}
 
 			$player = $event->getPlayer();
-			$gamemode = (int)$event->getNewGamemode()->getAliases()[2];
+			$gamemode = $event->getNewGamemode()->getAliases()[0];
 
-			self::saveInventory($player, (int)$player->getGamemode()->getAliases()[2]);
+			self::saveInventory($player, $player->getGamemode()->getAliases()[0]);
 			self::clearInventory($event->getPlayer());
 			self::loadInventory($player, $gamemode);
 
@@ -101,7 +126,7 @@ class LimitCreative extends PluginBase implements Listener {
 		$dropItem = function (PlayerDropItemEvent $event) {
 
 			if (!$event->getPlayer()->isCreative()) return;
-			if(self::canBypass($event->getPlayer())) return;
+			if (self::canBypass($event->getPlayer())) return;
 
 			$event->cancel();
 
@@ -116,7 +141,7 @@ class LimitCreative extends PluginBase implements Listener {
 		$blockPickUp = function (PlayerBlockPickEvent $event) {
 
 			if (!$event->getPlayer()->isCreative()) return;
-			if(self::canBypass($event->getPlayer())) return;
+			if (self::canBypass($event->getPlayer())) return;
 
 			$event->cancel();
 
@@ -133,7 +158,7 @@ class LimitCreative extends PluginBase implements Listener {
 			$entity = $event->getEntity();
 			if (!$entity instanceof Player) return;
 			if (!$entity->isCreative()) return;
-			if(self::canBypass($entity)) return;
+			if (self::canBypass($entity)) return;
 
 			$event->cancel();
 
@@ -148,7 +173,7 @@ class LimitCreative extends PluginBase implements Listener {
 		$interact = function (PlayerInteractEvent $event) {
 
 			if (!$event->getPlayer()->isCreative()) return;
-			if(self::canBypass($event->getPlayer())) return;
+			if (self::canBypass($event->getPlayer())) return;
 
 			if (!in_array($event->getBlock()->getId(), $this->blacklist)) return;
 
@@ -160,14 +185,14 @@ class LimitCreative extends PluginBase implements Listener {
 
 	}
 
-	private function registerEntityDamageByEntityEvent(){
+	private function registerEntityDamageByEntityEvent() {
 
-		$entityDamage = function (EntityDamageByEntityEvent $event){
+		$entityDamage = function (EntityDamageByEntityEvent $event) {
 
 			$entity = $event->getEntity();
-			if(!$entity instanceof Player) return;
-			if(!$entity->isCreative()) return;
-			if(self::canBypass($entity)) return;
+			if (!$entity instanceof Player) return;
+			if (!$entity->isCreative()) return;
+			if (self::canBypass($entity)) return;
 			$event->cancel();
 
 		};
@@ -176,15 +201,16 @@ class LimitCreative extends PluginBase implements Listener {
 
 	}
 
-	private function registerPlayerDeathEvent(){
+	private function registerPlayerDeathEvent() {
 
-		$playerDeath = function (PlayerDeathEvent $event){
+		$playerDeath = function (PlayerDeathEvent $event) {
 
-			if(!$event->getPlayer()->isCreative()) return;
-			if(self::canBypass($event->getPlayer())) return;
+			if (!$event->getPlayer()->isCreative()) return;
+			if (self::canBypass($event->getPlayer())) return;
 
 			if ($this->getConfig()->get("clearInventory", true) == true)
 				self::clearInventory($event->getPlayer());
+				self::clearInventories($event->getPlayer());
 
 		};
 
@@ -198,7 +224,7 @@ class LimitCreative extends PluginBase implements Listener {
 
 	public static function canBypass(Player $player): bool {
 
-		if($player->hasPermission("limitcreative.bypass"))
+		if ($player->hasPermission("limitcreative.bypass"))
 			return true;
 		return false;
 
@@ -215,34 +241,81 @@ class LimitCreative extends PluginBase implements Listener {
 
 	}
 
-	public static function saveInventory(Player $player, int $gamemode) {
+	public static function clearInventories(Player $player) {
 
-		self::$inventories[$player->getName()][$gamemode] = array(
-			"inventory" => $player->getInventory()->getContents(),
-			"handOffInventory" => $player->getOffHandInventory()->getContents(),
-			"armorInventory" => $player->getArmorInventory()->getContents(),
-			"enderInventory" => $player->getEnderInventory()->getContents(),
-			"effects" => $player->getEffects()->all()
-		);
+		self::$database->executeInsert("limitcreative.clearInventories", ["UUID" => $player->getUniqueId()->toString()]);
 
 	}
 
-	public static function loadInventory(Player $player, int $gamemode) {
 
-		if (!isset(self::$inventories[$player->getName()][$gamemode])) return;
+	public static function saveInventory(Player $player, $gamemode) {
 
-		$inventories = self::$inventories[$player->getName()][$gamemode];
+		$queryName = match ($gamemode) {
+			"creative" => "limitcreative.setCreativeInventory",
+			"survival" => "limitcreative.setSurvivalInventory",
+			"adventure" => "limitcreative.setAdventureInventory",
+			"spectator" => "limitcreative.setSpectatorInventory",
+			default => null,
+		};
 
-		$player->getInventory()->setContents($inventories["inventory"]);
-		$player->getOffHandInventory()->setContents($inventories["handOffInventory"]);
-		$player->getArmorInventory()->setContents($inventories["armorInventory"]);
-		$player->getEnderInventory()->setContents($inventories["enderInventory"]);
+		if ($queryName == null)
+			return;
 
-		foreach ($inventories["effects"] as $effect) {
+		self::$database->executeInsert($queryName, [
+			"UUID" => $player->getUniqueId()->toString(),
+			"inventory" => serialize(array(
+				"inventory" => $player->getInventory()->getContents(),
+				"handOffInventory" => $player->getOffHandInventory()->getContents(),
+				"armorInventory" => $player->getArmorInventory()->getContents(),
+				"enderInventory" => $player->getEnderInventory()->getContents(),
+				"effects" => $player->getEffects()->all()
+			))
+		]);
 
-			$player->getEffects()->add($effect);
 
-		}
+	}
+
+	public static function loadInventory(Player $player, $gamemode) {
+
+		$queryName = match ($gamemode) {
+			"creative" => "limitcreative.getCreativeInventory",
+			"survival" => "limitcreative.getSurvivalInventory",
+			"adventure" => "limitcreative.getAdventureInventory",
+			"spectator" => "limitcreative.getSpectatorInventory",
+			default => null,
+		};
+
+		if ($queryName == null)
+			return;
+
+		self::$database->executeSelect($queryName, ["UUID" => $player->getUniqueId()->toString()],
+			function ($data) use ($gamemode, $player) {
+
+				if(count($data) == 0)
+					return;
+
+				if($data[0][$gamemode] == "")
+					return;
+
+				/** @var array $inventories */
+				$inventories = unserialize($data[0][$gamemode]);
+
+				$player->getInventory()->setContents($inventories["inventory"]);
+				$player->getOffHandInventory()->setContents($inventories["handOffInventory"]);
+				$player->getArmorInventory()->setContents($inventories["armorInventory"]);
+				$player->getEnderInventory()->setContents($inventories["enderInventory"]);
+
+				foreach ($inventories["effects"] as $effect) {
+
+					$player->getEffects()->add($effect);
+
+				}
+
+			},
+			function ($error) { // Error is untested.
+				$this->getLogger()->critical($error);
+			}
+		);
 
 	}
 

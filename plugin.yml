@@ -3,7 +3,6 @@ name: LimitCreative
 version: 1.0.0
 main: ErikPDev\LimitCreative\LimitCreative
 api: 4.0.0
-src-namespace-prefix: ErikPDev\LimitCreative
 
 permissions:
   limitcreative.bypass:
