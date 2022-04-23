@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace ErikPDev\LimitCreative;
 
+use AttachableLogger;
 use pocketmine\event\entity\EntityDamageByEntityEvent;
 use pocketmine\event\entity\EntityItemPickupEvent;
 use pocketmine\event\Listener;
@@ -16,13 +17,15 @@ use pocketmine\event\player\PlayerQuitEvent;
 use pocketmine\item\StringToItemParser;
 use pocketmine\player\Player;
 use pocketmine\plugin\PluginBase;
+use pocketmine\plugin\PluginLogger;
 use pocketmine\Server;
+use poggit\libasynql\DataConnector;
 use poggit\libasynql\libasynql;
 
 class LimitCreative extends PluginBase implements Listener {
 
-	private static \poggit\libasynql\DataConnector $database;
-	private static \pocketmine\plugin\PluginLogger|\AttachableLogger $logger;
+	private static DataConnector $database;
+	private static PluginLogger|AttachableLogger $logger;
 	private array $blacklist;
 
 	protected function onEnable(): void {
@@ -32,6 +35,11 @@ class LimitCreative extends PluginBase implements Listener {
 		Server::getInstance()->getPluginManager()->registerEvents($this, $this);
 
 		foreach ($this->getConfig()->getNested("blacklisted-blocks") as $blockItem) {
+
+			if(is_numeric($blockItem)){
+				$this->blacklist[] = (int) $blockItem;
+				continue;
+			}
 
 			$itemBlock = StringToItemParser::getInstance()->parse($blockItem);
 
@@ -62,7 +70,7 @@ class LimitCreative extends PluginBase implements Listener {
 			array(
 				"type" => "sqlite",
 				"sqlite" => array(
-					"file" => "data.sqlite"
+					"file" => "inventories.sqlite"
 				),
 				"worker-limit" => 1
 			),
@@ -74,14 +82,6 @@ class LimitCreative extends PluginBase implements Listener {
 		self::$database->executeGeneric("limitcreative.init");
 
 		self::$logger = $this->getLogger();
-		
-	}
-
-
-	protected function onDisable(): void {
-
-		if (isset(self::$database))
-			self::$database->close();
 
 	}
 
@@ -100,9 +100,57 @@ class LimitCreative extends PluginBase implements Listener {
 
 	}
 
+	public static function canBypass(Player $player): bool {
+
+		if ($player->hasPermission("limitcreative.bypass"))
+			return true;
+		return false;
+
+	}
+
+	public static function clearInventory(Player $player) {
+
+		$player->getOffHandInventory()->clearAll();
+		$player->getCursorInventory()->clearAll();
+		$player->getArmorInventory()->clearAll();
+		$player->getEnderInventory()->clearAll();
+		$player->getInventory()->clearAll();
+		$player->getEffects()->clear();
+
+	}
+
+	public static function saveInventory(Player $player, $gamemode) {
+
+		$queryName = match ($gamemode) {
+			"creative" => "limitcreative.setCreativeInventory",
+			"survival" => "limitcreative.setSurvivalInventory",
+			"adventure" => "limitcreative.setAdventureInventory",
+			"spectator" => "limitcreative.setSpectatorInventory",
+			default => null,
+		};
+
+		if ($queryName == null)
+			return;
+
+		self::$database->executeInsert($queryName, [
+			"UUID" => $player->getUniqueId()->toString(),
+			"inventory" => serialize(array(
+				"inventory" => new Items($player->getInventory()->getContents()),
+				"handOffInventory" => new Items($player->getOffHandInventory()->getContents()),
+				"armorInventory" => new Items($player->getArmorInventory()->getContents()),
+				"enderInventory" => new Items($player->getEnderInventory()->getContents()),
+				"effects" => $player->getEffects()->all()
+			))
+		]);
+
+
+	}
+
 	private function registerGamemodeChangeEvent() {
 
 		$gamemodeChange = function (PlayerGameModeChangeEvent $event) {
+
+			if(self::canBypass($event->getPlayer())) return;
 
 			if ($this->getConfig()->get("separateInventories", true) == false) {
 				if ($this->getConfig()->get("clearInventory", true) == true)
@@ -123,18 +171,68 @@ class LimitCreative extends PluginBase implements Listener {
 
 	}
 
-	private function registerDropItemEvent() {
+	public static function loadInventory(Player $player, $gamemode) {
 
-		$dropItem = function (PlayerDropItemEvent $event) {
+		$queryName = match ($gamemode) {
+			"creative" => "limitcreative.getCreativeInventory",
+			"survival" => "limitcreative.getSurvivalInventory",
+			"adventure" => "limitcreative.getAdventureInventory",
+			"spectator" => "limitcreative.getSpectatorInventory",
+			default => null,
+		};
 
+		if ($queryName == null)
+			return;
+
+		$logger = self::$logger;
+
+		self::$database->executeSelect($queryName, ["UUID" => $player->getUniqueId()->toString()],
+			function ($data) use ($gamemode, $player) {
+
+				if (count($data) == 0)
+					return;
+
+				if ($data[0][$gamemode] == "")
+					return;
+
+				/** @var array $inventories */
+				$inventories = unserialize($data[0][$gamemode]);
+
+				$player->getInventory()->setContents($inventories["inventory"]->getItems());
+				$player->getOffHandInventory()->setContents($inventories["handOffInventory"]->getItems());
+				$player->getArmorInventory()->setContents($inventories["armorInventory"]->getItems());
+				$player->getEnderInventory()->setContents($inventories["enderInventory"]->getItems());
+
+				foreach ($inventories["effects"] as $effect) {
+
+					$player->getEffects()->add($effect);
+
+				}
+
+			},
+			function ($error) use ($logger) { // Error is untested.
+				$logger->critical($error);
+			}
+		);
+
+	}
+
+	private function registerInteractEvent() {
+
+		$interact = function (PlayerInteractEvent $event) {
+
+			var_dump($this->blacklist);
+			var_dump($event->getBlock()->getId());
 			if (!$event->getPlayer()->isCreative()) return;
 			if (self::canBypass($event->getPlayer())) return;
+
+			if (!in_array($event->getBlock()->getId(), $this->blacklist)) return;
 
 			$event->cancel();
 
 		};
 
-		Server::getInstance()->getPluginManager()->registerEvent(PlayerDropItemEvent::class, $dropItem, 0, $this);
+		Server::getInstance()->getPluginManager()->registerEvent(PlayerInteractEvent::class, $interact, 0, $this);
 
 	}
 
@@ -150,40 +248,6 @@ class LimitCreative extends PluginBase implements Listener {
 		};
 
 		Server::getInstance()->getPluginManager()->registerEvent(PlayerBlockPickEvent::class, $blockPickUp, 0, $this);
-
-	}
-
-	private function registerPickUpItemEvent() {
-
-		$itemPickUp = function (EntityItemPickupEvent $event) {
-
-			$entity = $event->getEntity();
-			if (!$entity instanceof Player) return;
-			if (!$entity->isCreative()) return;
-			if (self::canBypass($entity)) return;
-
-			$event->cancel();
-
-		};
-
-		Server::getInstance()->getPluginManager()->registerEvent(EntityItemPickupEvent::class, $itemPickUp, 0, $this);
-
-	}
-
-	private function registerInteractEvent() {
-
-		$interact = function (PlayerInteractEvent $event) {
-
-			if (!$event->getPlayer()->isCreative()) return;
-			if (self::canBypass($event->getPlayer())) return;
-
-			if (!in_array($event->getBlock()->getId(), $this->blacklist)) return;
-
-			$event->cancel();
-
-		};
-
-		Server::getInstance()->getPluginManager()->registerEvent(PlayerInteractEvent::class, $interact, 0, $this);
 
 	}
 
@@ -212,34 +276,11 @@ class LimitCreative extends PluginBase implements Listener {
 
 			if ($this->getConfig()->get("clearInventory", true) == true)
 				self::clearInventory($event->getPlayer());
-				self::clearInventories($event->getPlayer());
+			self::clearInventories($event->getPlayer());
 
 		};
 
 		Server::getInstance()->getPluginManager()->registerEvent(PlayerDeathEvent::class, $playerDeath, 0, $this);
-
-	}
-
-	/*
-	 * The below functions can be used outside this plugin.
-	 */
-
-	public static function canBypass(Player $player): bool {
-
-		if ($player->hasPermission("limitcreative.bypass"))
-			return true;
-		return false;
-
-	}
-
-	public static function clearInventory(Player $player) {
-
-		$player->getOffHandInventory()->clearAll();
-		$player->getCursorInventory()->clearAll();
-		$player->getArmorInventory()->clearAll();
-		$player->getEnderInventory()->clearAll();
-		$player->getInventory()->clearAll();
-		$player->getEffects()->clear();
 
 	}
 
@@ -249,77 +290,42 @@ class LimitCreative extends PluginBase implements Listener {
 
 	}
 
+	private function registerDropItemEvent() {
 
-	public static function saveInventory(Player $player, $gamemode) {
+		$dropItem = function (PlayerDropItemEvent $event) {
 
-		$queryName = match ($gamemode) {
-			"creative" => "limitcreative.setCreativeInventory",
-			"survival" => "limitcreative.setSurvivalInventory",
-			"adventure" => "limitcreative.setAdventureInventory",
-			"spectator" => "limitcreative.setSpectatorInventory",
-			default => null,
+			if (!$event->getPlayer()->isCreative()) return;
+			if (self::canBypass($event->getPlayer())) return;
+
+			$event->cancel();
+
 		};
 
-		if ($queryName == null)
-			return;
-
-		self::$database->executeInsert($queryName, [
-			"UUID" => $player->getUniqueId()->toString(),
-			"inventory" => serialize(array(
-				"inventory" => $player->getInventory()->getContents(),
-				"handOffInventory" => $player->getOffHandInventory()->getContents(),
-				"armorInventory" => $player->getArmorInventory()->getContents(),
-				"enderInventory" => $player->getEnderInventory()->getContents(),
-				"effects" => $player->getEffects()->all()
-			))
-		]);
-
+		Server::getInstance()->getPluginManager()->registerEvent(PlayerDropItemEvent::class, $dropItem, 0, $this);
 
 	}
 
-	public static function loadInventory(Player $player, $gamemode) {
+	private function registerPickUpItemEvent() {
 
-		$queryName = match ($gamemode) {
-			"creative" => "limitcreative.getCreativeInventory",
-			"survival" => "limitcreative.getSurvivalInventory",
-			"adventure" => "limitcreative.getAdventureInventory",
-			"spectator" => "limitcreative.getSpectatorInventory",
-			default => null,
+		$itemPickUp = function (EntityItemPickupEvent $event) {
+
+			$entity = $event->getEntity();
+			if (!$entity instanceof Player) return;
+			if (!$entity->isCreative()) return;
+			if (self::canBypass($entity)) return;
+
+			$event->cancel();
+
 		};
 
-		if ($queryName == null)
-			return;
+		Server::getInstance()->getPluginManager()->registerEvent(EntityItemPickupEvent::class, $itemPickUp, 0, $this);
 
-		$logger = self::$logger;
+	}
 
-		self::$database->executeSelect($queryName, ["UUID" => $player->getUniqueId()->toString()],
-			function ($data) use ($gamemode, $player) {
+	protected function onDisable(): void {
 
-				if(count($data) == 0)
-					return;
-
-				if($data[0][$gamemode] == "")
-					return;
-
-				/** @var array $inventories */
-				$inventories = unserialize($data[0][$gamemode]);
-
-				$player->getInventory()->setContents($inventories["inventory"]);
-				$player->getOffHandInventory()->setContents($inventories["handOffInventory"]);
-				$player->getArmorInventory()->setContents($inventories["armorInventory"]);
-				$player->getEnderInventory()->setContents($inventories["enderInventory"]);
-
-				foreach ($inventories["effects"] as $effect) {
-
-					$player->getEffects()->add($effect);
-
-				}
-
-			},
-			function ($error, $logger) { // Error is untested.
-				$logger->critical($error);
-			}
-		);
+		if (isset(self::$database))
+			self::$database->close();
 
 	}
 
