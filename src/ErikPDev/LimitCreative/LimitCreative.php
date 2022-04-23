@@ -221,8 +221,6 @@ class LimitCreative extends PluginBase implements Listener {
 
 		$interact = function (PlayerInteractEvent $event) {
 
-			var_dump($this->blacklist);
-			var_dump($event->getBlock()->getId());
 			if (!$event->getPlayer()->isCreative()) return;
 			if (self::canBypass($event->getPlayer())) return;
 
