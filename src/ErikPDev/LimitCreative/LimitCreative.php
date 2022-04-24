@@ -139,7 +139,7 @@ class LimitCreative extends PluginBase implements Listener {
 				"handOffInventory" => new Items($player->getOffHandInventory()->getContents()),
 				"armorInventory" => new Items($player->getArmorInventory()->getContents()),
 				"enderInventory" => new Items($player->getEnderInventory()->getContents()),
-				"effects" => $player->getEffects()->all()
+				"effects" => new Effects($player->getEffects()->all())
 			))
 		]);
 
