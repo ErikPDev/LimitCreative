@@ -41,5 +41,5 @@ blacklisted-blocks:
   - "item_frame_block"
   - "shulker_box"
   - "undyed_shulker_box"
-
+  - "458"
 ```
