@@ -115,7 +115,6 @@ class LimitCreative extends PluginBase implements Listener {
 		$player->getArmorInventory()->clearAll();
 		$player->getEnderInventory()->clearAll();
 		$player->getInventory()->clearAll();
-		$player->getEffects()->clear();
 
 	}
 
@@ -138,8 +137,7 @@ class LimitCreative extends PluginBase implements Listener {
 				"inventory" => new Items($player->getInventory()->getContents()),
 				"handOffInventory" => new Items($player->getOffHandInventory()->getContents()),
 				"armorInventory" => new Items($player->getArmorInventory()->getContents()),
-				"enderInventory" => new Items($player->getEnderInventory()->getContents()),
-				"effects" => new Effects($player->getEffects()->all())
+				"enderInventory" => new Items($player->getEnderInventory()->getContents())
 			))
 		]);
 
@@ -202,12 +200,6 @@ class LimitCreative extends PluginBase implements Listener {
 				$player->getOffHandInventory()->setContents($inventories["handOffInventory"]->getItems());
 				$player->getArmorInventory()->setContents($inventories["armorInventory"]->getItems());
 				$player->getEnderInventory()->setContents($inventories["enderInventory"]->getItems());
-
-				foreach ($inventories["effects"] as $effect) {
-
-					$player->getEffects()->add($effect);
-
-				}
 
 			},
 			function ($error) use ($logger) { // Error is untested.
